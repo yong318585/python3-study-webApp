@@ -1,14 +1,16 @@
 
 import asyncio
+import aiomysql
 import logging;logging.basicConfig(level = logging.INFO)
 # http://blog.csdn.net/haskei/article/details/57075381
 # https://github.com/wl356485255/pythonORM/blob/master/orm.py
+
 @asyncio.coroutine
 def create_pool(loop,**kw):
 	logging.info('create database connection pool...')
 	global __pool
 	__pool = yield from  aiomysql.create_pool(
-		host = kw.get('host','localhost'),
+		host = kw.get('host','127.0.0.1'),
 		port = kw.get('port',3306),
 		user= kw['user'],
 		password = kw['password'],
@@ -35,18 +37,38 @@ def select(sql,args,size=None):
 		logging.info('rows  returned:%s'%len(rs))
 		return rs
 
-@asyncio.coroutine
-def execute(sql,args):
-	log(sql)
-	with (yield from __pool) as conn:
+
+async def execute(sql,args,autocommit=True):
+	print('execute,sql:%s'%sql)
+	async with __pool.get() as conn:
+		if not autocommit:
+			await conn.begin()
 		try:
-			cur = yield from conn.cursor()
-			yield from cur.execute(sql.replace('?','%s'),args)
-			affected = cur.rowcount
-			yield from cur.close()
+			async with conn.cursor(aiomysql.DictCursor) as cur:
+				print('args>>>%s'%args)
+				await cur.execute(sql.replace('?','%s'),args)
+				affected = cur.rowcount
+				print('affected>>>%s'%affected)
+				if not autocommit:
+					await conn.commit()
+		
 		except BaseException as e:
-			raise e		
+			if not autocommit:
+				await conn.rollback()
+			raise e	
+		finally:
+			print('conn.close')
+			conn.close()	
+			# destory_pool()	
 		return affected		
+
+@asyncio.coroutine
+def destory_pool():
+	print('destory_pool')
+	global __pool
+	if __pool is not None :
+		__pool.close()
+		yield from __pool.wait_closed()	
 
 class  Field(object):
 	def __init__(self,name,column_type,primary_key,default):
@@ -60,10 +82,10 @@ class  Field(object):
 
 class StringField(Field):
 		"""docstring for StringField"""
-		def __init__(self, name = None,primary_key=False,default=None,column_type='varchar(100)'):
-			super().__init__(name,column_type,primary_key,default)
+		def __init__(self, name = None,primary_key=False,default=None,ddl='varchar(100)'):
+			super().__init__(name,ddl,primary_key,default)
 
-class BoolearField(Field):
+class BooleanField(Field):
 	def __init__(self,name=None,default =None):
 		super().__init__(name,'boolean',False,default)
 
@@ -100,13 +122,13 @@ class ModelMetaclass(type):
 		if name == 'Model':
 			return type.__new__(cls,name,bases,attrs)
 		tableName =  attrs.get('__table__',None) or name	
-		logging.info('found model:%s(table:%s)'%(name,tableName))
+		# logging.info('found model:%s(table:%s)'%(name,tableName))
 		mappings = dict()
 		fields = []
 		primaryKey = None
 		for  k,v in attrs.items():
 			if isinstance(v,Field):
-				logging.info('found mapping:%s--->%s'%(k,v))
+				# logging.info('found mapping:%s--->%s'%(k,v))
 				mappings[k]=v
 
 				if v.primary_key:
@@ -120,7 +142,7 @@ class ModelMetaclass(type):
 		for k in mappings.keys():
 			attrs.pop(k)
 		escaped_fields=list(map(lambda f:'`%s`'%f,fields))	
-		logging.info('escaped_fields>>>%s'%escaped_fields)
+		# logging.info('escaped_fields>>>%s'%escaped_fields)
 		attrs['__mappings__']=mappings
 		attrs['__table__']=tableName
 		attrs['__primary_key__']=primaryKey
@@ -161,10 +183,7 @@ class Model(dict,metaclass=ModelMetaclass):
 
 
 
-
-
-
-# 类方法的第一个参数是cls,而实例方法的第一个参数是self
+	# 类方法的第一个参数是cls,而实例方法的第一个参数是self
 	@classmethod
 	async def findAll(cls,where = None,args=None,**kw):
 		sql =[cls.__select__]
@@ -218,7 +237,8 @@ class Model(dict,metaclass=ModelMetaclass):
 		args = list(map(self.getValueOrDefault,self.__fields__))
 		args.append(self.getValueOrDefault(self.__primary_key__))
 		rows = await execute(self.__insert__,args)
-		if row !=1:
+		logging.info('save.rows=%s'%rows)
+		if rows !=1:
 			logging.warning('failed to insert  record:affected rows:%s'%rows)
 
 	async def update(self):
@@ -249,12 +269,15 @@ if __name__ == '__main__':
  
     # 创建一个实例：
     u = User(id=12345, name='peic', email='peic@python.org', password='password')
-    print(u)
+    # print(u)
     # # 保存到数据库：
-    u.save()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(u.save())
+    loop.close()
+    # u.save()
     # print(u)
     # u.insert()
-    print(u)
+    # print(u)
     
  
     print(u['id'])
