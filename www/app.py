@@ -36,6 +36,7 @@ def logger_factory(app,handler):
 	@asyncio.coroutine
 	def logger(request):
 		logging.info('request:%s  %s'%(request.method,request.path))
+		return (yield from handler(request))
 	return logger
 	
 
