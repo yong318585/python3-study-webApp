@@ -76,12 +76,27 @@ def has_request_arg(fn):
         if name == 'request':
             found = True
             continue
+
+        #     def `foo(a, *b, c, **d):
+        #
+        #     pass
+        #
+        # a == POSITIONAL_OR_KEYWORD  # a是用位置或参数名都可赋值的
+        # b == VAR_POSITIONAL  # b是可变长列表
+        # c == KEYWORD_ONLY  # c只能通过参数名的方式赋值
+        # d == VAR_KEYWORD  # d是可变长字典
+        #
+        # POSITIONAL_ONLY
+        # 这类型在官方说明是不会出现在普通函数的，一般是内置函数什么的才会有，可能是self，cls或者是更底层的东西
+            # KEYWORD_ONLY 强制性关键字参数
         if found and (param.kind != inspect.Parameter.VAR_POSITIONAL and param.kind != inspect.Parameter.KEYWORD_ONLY and  param.kind != inspect.Parameter.VAR_KEYWORD):
             raise  ValueError('request parameter must b the last name parameter in function:%s%s'%(fn.__name__,str(sig)))
     logging.info('has_request_arg>>>>>%s'%found)
     return  found
 
-
+# RequestHandler目的就是从URL函数中分析其需要接收的参数，从request中获取必要的参数，
+# URL函数不一定是一个coroutine，因此我们用RequestHandler()来封装一个URL处理函数。
+# 调用URL函数，然后把结果转换为web.Response对象，这样，就完全符合aiohttp框架的要求
 class RequestHandler(object):
     def __init__(self,app, func):
         self._app = app
@@ -151,6 +166,8 @@ class RequestHandler(object):
 def add_route(app, fn):
     method = getattr(fn, '__method__', None)
     path = getattr(fn, '__route__', None)
+
+    logging.info('method>>>>%s>>>>path>>>%s'%(method,path))
     if path is None or method is None:
         raise ValueError('@get or @post not defined in %s.' % str(fn))
     if not asyncio.iscoroutinefunction(fn) and not inspect.isgeneratorfunction(fn):

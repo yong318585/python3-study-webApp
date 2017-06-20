@@ -19,11 +19,13 @@ def init_jinja2(app,**kw):
 	auto_reload = kw.get('auto_reload',True)
 	)
 	path = kw.get('path',None)
+	logging.info('jinja2.path>>>>%s'%path)
 	if path is None:
 		path = os.path.join(os.path.dirname(os.path.abspath(__file__)),'templates')
 	logging.info('set jinja2 template path:%s'%path)
 	env = Environment(loader = FileSystemLoader(path),**options)
 	filters = kw.get('filters',None)
+
 	if filters is not None:
 		for name,f in filters.items():
 			env.filters[name] = f
