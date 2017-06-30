@@ -110,17 +110,17 @@ class RequestHandler(object):
     async def __call__(self, request, kw=None):
         logging.info('coreweb.call........')
         if self._has_request_arg or self._has_named_kw_args or self._required_kw_arg:
-            logging.info('request.method>>>%s'%request.method)
+            logging.info('request.method>>>%s>>>>content.type:%s'%(request.method,request.content_type))
             if request.method == 'POST':
                 if not request.content_type:
                     return web.HTTPBadRequest('mssiing content-type')
-                ct = request().content_type.lower()
-                if ct.startwith('application/json'):
+                ct = request.content_type.lower()
+                if ct.startswith('application/json'):
                     params = await request.json()
                     if not isinstance(params,dict):
                         return  web.HTTPBadRequest('json body must be object')
                     kw = params
-                elif ct.startwith('application/x-wwww-form-urlencoded') or ct.startwith('multipart/form-data'):
+                elif ct.startswith('application/x-wwww-form-urlencoded') or ct.startwith('multipart/form-data'):
                     params = await  request.post()
                     kw = dict(**params)
                 else:
@@ -150,7 +150,7 @@ class RequestHandler(object):
         if self._has_request_arg:
             kw['request'] = request
         if self._required_kw_arg:
-            for name in self._has_request_arg:
+            for name in self._required_kw_arg:
                 if not name in kw:
                     return web.HTTPBadRequest('Missing argument:%s'%name)
         logging.info('call with args:%s'%str(kw))
